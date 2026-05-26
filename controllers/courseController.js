@@ -1,0 +1,230 @@
+const Course = require('../models/Course');
+const User = require('../models/User');
+const sendEmail = require('../utils/sendEmail');
+
+// CREATE COURSE - Admin only
+const createCourse = async (req, res) => {
+  try {
+    const { courseName, courseCode, department, description, lecturer, credits, semester, academicYear } = req.body;
+
+    // Check if course code exists
+    const existingCourse = await Course.findOne({ courseCode });
+    if (existingCourse) {
+      return res.status(400).json({ message: 'Course code already exists' });
+    }
+
+    // Check if lecturer exists
+    const lecturerExists = await User.findById(lecturer);
+    if (!lecturerExists || lecturerExists.role !== 'lecturer') {
+      return res.status(400).json({ message: 'Invalid lecturer selected' });
+    }
+
+    const course = new Course({
+      courseName,
+      courseCode,
+      department,
+      description,
+      lecturer,
+      credits,
+      semester,
+      academicYear
+    });
+
+    await course.save();
+
+    res.status(201).json({ message: 'Course created successfully', course });
+
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// GET ALL COURSES
+const getAllCourses = async (req, res) => {
+  try {
+    const courses = await Course.find()
+      .populate('lecturer', 'fullName email department')
+      .populate('students', 'fullName email matriculationNumber')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json(courses);
+
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// GET SINGLE COURSE
+const getCourseById = async (req, res) => {
+  try {
+    const course = await Course.findById(req.params.id)
+      .populate('lecturer', 'fullName email department')
+      .populate('students', 'fullName email matriculationNumber');
+
+    if (!course) {
+      return res.status(404).json({ message: 'Course not found' });
+    }
+
+    res.status(200).json(course);
+
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// GET COURSES BY LECTURER
+const getLecturerCourses = async (req, res) => {
+  try {
+    const courses = await Course.find({ lecturer: req.user.id })
+      .populate('students', 'fullName email matriculationNumber');
+
+    res.status(200).json(courses);
+
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// GET COURSES BY STUDENT
+const getStudentCourses = async (req, res) => {
+  try {
+    const courses = await Course.find({ students: req.user.id })
+      .populate('lecturer', 'fullName email');
+
+    res.status(200).json(courses);
+
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// UPDATE COURSE - Admin only
+const updateCourse = async (req, res) => {
+  try {
+    const { courseName, courseCode, department, description, lecturer, credits, semester, academicYear, isActive } = req.body;
+
+    const course = await Course.findByIdAndUpdate(
+      req.params.id,
+      { courseName, courseCode, department, description, lecturer, credits, semester, academicYear, isActive },
+      { new: true }
+    ).populate('lecturer', 'fullName email');
+
+    if (!course) {
+      return res.status(404).json({ message: 'Course not found' });
+    }
+
+    res.status(200).json({ message: 'Course updated successfully', course });
+
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// DELETE COURSE - Admin only
+const deleteCourse = async (req, res) => {
+  try {
+    const course = await Course.findByIdAndDelete(req.params.id);
+    if (!course) {
+      return res.status(404).json({ message: 'Course not found' });
+    }
+    res.status(200).json({ message: 'Course deleted successfully' });
+
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// ENROLL STUDENT - Admin only
+const enrollStudent = async (req, res) => {
+  try {
+    const { studentId } = req.body;
+
+    const course = await Course.findById(req.params.id);
+    if (!course) {
+      return res.status(404).json({ message: 'Course not found' });
+    }
+
+    // Check if student exists
+    const student = await User.findById(studentId);
+    if (!student || student.role !== 'student') {
+      return res.status(400).json({ message: 'Invalid student selected' });
+    }
+
+    // Check if already enrolled
+    if (course.students.includes(studentId)) {
+      return res.status(400).json({ message: 'Student already enrolled in this course' });
+    }
+
+    // Enroll student
+    course.students.push(studentId);
+    await course.save();
+
+    // Send email notification to student
+    try {
+      await sendEmail({
+        to: student.email,
+        subject: `Enrolled in ${course.courseName}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #1a1a2e;">Course Enrollment Confirmation</h2>
+            <p>Dear ${student.fullName},</p>
+            <p>You have been successfully enrolled in:</p>
+            <p><strong>Course:</strong> ${course.courseName}</p>
+            <p><strong>Code:</strong> ${course.courseCode}</p>
+            <p><strong>Department:</strong> ${course.department}</p>
+            <br/>
+            <p>Best regards,</p>
+            <p><strong>UTG Attendance System</strong></p>
+          </div>
+        `
+      });
+    } catch (emailError) {
+      console.log('Email sending failed:', emailError.message);
+    }
+
+    res.status(200).json({ message: 'Student enrolled successfully', course });
+
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// UNENROLL STUDENT - Admin only
+const unenrollStudent = async (req, res) => {
+  try {
+    const { studentId } = req.body;
+
+    const course = await Course.findById(req.params.id);
+    if (!course) {
+      return res.status(404).json({ message: 'Course not found' });
+    }
+
+    // Check if student is enrolled
+    if (!course.students.includes(studentId)) {
+      return res.status(400).json({ message: 'Student is not enrolled in this course' });
+    }
+
+    // Unenroll student
+    course.students = course.students.filter(
+      id => id.toString() !== studentId
+    );
+    await course.save();
+
+    res.status(200).json({ message: 'Student unenrolled successfully', course });
+
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+module.exports = {
+  createCourse,
+  getAllCourses,
+  getCourseById,
+  getLecturerCourses,
+  getStudentCourses,
+  updateCourse,
+  deleteCourse,
+  enrollStudent,
+  unenrollStudent
+};
