@@ -216,11 +216,39 @@ const closeSession = async (req, res) => {
   }
 };
 
+// DELETE SESSION - Lecturer only (closed sessions only)
+const deleteSession = async (req, res) => {
+  try {
+    const session = await Session.findById(req.params.id);
+    if (!session) {
+      return res.status(404).json({ message: 'Session not found' });
+    }
+
+    // Check if lecturer owns this session
+    if (session.lecturer.toString() !== req.user.id.toString()) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Only allow deleting closed sessions
+    if (session.isActive) {
+      return res.status(400).json({ message: 'Cannot delete an active session. Close it first.' });
+    }
+
+    await Session.findByIdAndDelete(req.params.id);
+
+    res.status(200).json({ message: 'Session deleted successfully' });
+
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 module.exports = {
   createSession,
   getAllSessions,
   getLecturerSessions,
   getSessionById,
   regenerateQR,
-  closeSession
+  closeSession,
+  deleteSession
 };
