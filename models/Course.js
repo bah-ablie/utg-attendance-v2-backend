@@ -29,8 +29,20 @@ const CourseSchema = new mongoose.Schema({
     required: true
   },
   students: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
+    student: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    enrolledBy: {
+      type: String,
+      enum: ['admin', 'lecturer'],
+      default: 'admin'
+    },
+    enrolledAt: {
+      type: Date,
+      default: Date.now
+    }
   }],
   credits: {
     type: Number,

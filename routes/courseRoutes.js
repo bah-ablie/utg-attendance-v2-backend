@@ -9,6 +9,7 @@ const {
   updateCourse,
   deleteCourse,
   enrollStudent,
+  lecturerEnrollStudent,
   unenrollStudent
 } = require('../controllers/courseController');
 const { protect, authorizeRoles } = require('../middleware/authMiddleware');
@@ -18,7 +19,10 @@ router.post('/', protect, authorizeRoles('admin'), createCourse);
 router.put('/:id', protect, authorizeRoles('admin'), updateCourse);
 router.delete('/:id', protect, authorizeRoles('admin'), deleteCourse);
 router.put('/:id/enroll', protect, authorizeRoles('admin'), enrollStudent);
-router.put('/:id/unenroll', protect, authorizeRoles('admin'), unenrollStudent);
+router.put('/:id/unenroll', protect, authorizeRoles('admin', 'lecturer'), unenrollStudent);
+
+// Lecturer routes
+router.put('/:id/lecturer-enroll', protect, authorizeRoles('lecturer'), lecturerEnrollStudent);
 
 // Shared routes
 router.get('/', protect, getAllCourses);
