@@ -38,7 +38,25 @@ const getAllCourses = async (req, res) => {
       .populate('students.student', 'fullName email matriculationNumber')
       .sort({ createdAt: -1 });
 
-    res.status(200).json(courses);
+    // Normalize students array to handle both old and new format
+    const normalizedCourses = courses.map(course => {
+      const courseObj = course.toObject();
+      courseObj.students = courseObj.students.map(enrollment => {
+        // Old format: enrollment is just an ObjectId
+        if (!enrollment.student && enrollment._id) {
+          return {
+            _id: enrollment._id,
+            student: enrollment,
+            enrolledBy: 'admin',
+            enrolledAt: new Date()
+          };
+        }
+        return enrollment;
+      });
+      return courseObj;
+    });
+
+    res.status(200).json(normalizedCourses);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -67,7 +85,23 @@ const getLecturerCourses = async (req, res) => {
     const courses = await Course.find({ lecturer: req.user.id })
       .populate('students.student', 'fullName email matriculationNumber');
 
-    res.status(200).json(courses);
+    const normalizedCourses = courses.map(course => {
+      const courseObj = course.toObject();
+      courseObj.students = courseObj.students.map(enrollment => {
+        if (!enrollment.student && enrollment._id) {
+          return {
+            _id: enrollment._id,
+            student: enrollment,
+            enrolledBy: 'admin',
+            enrolledAt: new Date()
+          };
+        }
+        return enrollment;
+      });
+      return courseObj;
+    });
+
+    res.status(200).json(normalizedCourses);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
