@@ -13,6 +13,18 @@ router.get('/', protect, authorizeRoles('admin'), async (req, res) => {
   }
 });
 
+// GET STUDENTS ONLY - Admin and Lecturer
+router.get('/students', protect, authorizeRoles('admin', 'lecturer'), async (req, res) => {
+  try {
+    const students = await User.find({ role: 'student' })
+      .select('-password')
+      .sort({ fullName: 1 });
+    res.status(200).json(students);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // GET USERS BY ROLE - Admin only
 router.get('/role/:role', protect, authorizeRoles('admin'), async (req, res) => {
   try {
