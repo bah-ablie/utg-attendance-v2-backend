@@ -177,6 +177,7 @@ const enrollStudent = async (req, res) => {
     await course.save();
 
     try {
+      console.log('Attempting to send email to:', student.email);
       await sendEmail({
         to: student.email,
         subject: `Enrolled in ${course.courseName}`,
@@ -194,6 +195,7 @@ const enrollStudent = async (req, res) => {
           </div>
         `
       });
+      console.log('Email sent successfully!');
     } catch (emailError) {
       console.log('Email sending failed:', emailError.message);
     }
