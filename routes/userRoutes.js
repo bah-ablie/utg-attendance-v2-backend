@@ -69,12 +69,21 @@ router.put('/:id', protect, authorizeRoles('admin'), async (req, res) => {
 });
 
 // DELETE USER - Admin only
+// DELETE USER - Admin only
 router.delete('/:id', protect, authorizeRoles('admin'), async (req, res) => {
   try {
     const user = await User.findByIdAndDelete(req.params.id);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
+
+    // Remove this student from all course enrollments
+    const Course = require('../models/Course');
+    await Course.updateMany(
+      {},
+      { $pull: { students: { student: req.params.id } } }
+    );
+
     res.status(200).json({ message: 'User deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
