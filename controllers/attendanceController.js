@@ -8,35 +8,34 @@ const markAttendance = async (req, res) => {
   try {
     const { sessionToken, courseId } = req.body;
 
-    // Get student IP
     const studentIP = req.headers['x-forwarded-for'] || 
                       req.connection.remoteAddress ||
                       req.socket.remoteAddress;
 
-    // Find session by token
     const session = await Session.findOne({ sessionToken });
     if (!session) {
       return res.status(404).json({ message: 'Invalid QR code. Session not found.' });
     }
 
-    // Security Layer 1: Check if QR expired
     if (new Date() > new Date(session.qrCodeExpiresAt)) {
       return res.status(400).json({ message: 'QR code has expired. Please ask your lecturer to regenerate.' });
     }
 
-    // Security Layer 2: Check if session is active
     if (!session.isActive) {
       return res.status(400).json({ message: 'This session has been closed.' });
     }
 
-    // Security Layer 3: Check if student is enrolled
     const course = await Course.findById(courseId);
     if (!course) {
       return res.status(404).json({ message: 'Course not found.' });
     }
 
+    // Security Layer 3: Check if student is enrolled (new data structure)
     const isEnrolled = course.students.some(
-      id => id.toString() === req.user.id.toString()
+      enrollment => {
+        const studentId = enrollment.student || enrollment;
+        return studentId.toString() === req.user.id.toString();
+      }
     );
     if (!isEnrolled) {
       return res.status(403).json({ 
@@ -44,7 +43,6 @@ const markAttendance = async (req, res) => {
       });
     }
 
-    // Security Layer 4: Check duplicate attendance
     const existingAttendance = await Attendance.findOne({
       session: session._id,
       student: req.user.id
@@ -53,18 +51,15 @@ const markAttendance = async (req, res) => {
       return res.status(400).json({ message: 'Attendance already marked for this session.' });
     }
 
-    // Security Layer 5: Check IP tracking
     if (session.scannedIPs.includes(studentIP)) {
       return res.status(400).json({ 
         message: 'This device has already been used to mark attendance.' 
       });
     }
 
-    // Add IP to scanned IPs
     session.scannedIPs.push(studentIP);
     await session.save();
 
-    // Create attendance record
     const attendance = new Attendance({
       session: session._id,
       course: courseId,
@@ -75,7 +70,6 @@ const markAttendance = async (req, res) => {
 
     await attendance.save();
 
-    // Send confirmation email
     try {
       await sendEmail({
         to: req.user.email,
@@ -167,21 +161,20 @@ const getAttendanceReport = async (req, res) => {
   try {
     const { courseId } = req.params;
 
-    // Get all sessions for this course
     const sessions = await Session.find({ course: courseId });
     const totalSessions = sessions.length;
 
-    // Get course with enrolled students
     const course = await Course.findById(courseId)
-      .populate('students', 'fullName email matriculationNumber department');
+      .populate('students.student', 'fullName email matriculationNumber department');
 
     if (!course) {
       return res.status(404).json({ message: 'Course not found' });
     }
 
-    // Calculate attendance for each student
     const report = await Promise.all(
-      course.students.map(async (student) => {
+      course.students.map(async (enrollment) => {
+        const student = enrollment.student || enrollment;
+
         const attendanceCount = await Attendance.countDocuments({
           course: courseId,
           student: student._id
@@ -209,7 +202,6 @@ const getAttendanceReport = async (req, res) => {
       })
     );
 
-    // Sort by percentage descending
     report.sort((a, b) => b.percentage - a.percentage);
 
     res.status(200).json({
@@ -232,8 +224,8 @@ const getAttendanceReport = async (req, res) => {
 // GET MY ATTENDANCE REPORT PER COURSE - Student
 const getMyAttendanceReport = async (req, res) => {
   try {
-    // Get all courses student is enrolled in
-    const courses = await Course.find({ students: req.user.id });
+    // Get all courses where student is enrolled (new data structure)
+    const courses = await Course.find({ 'students.student': req.user.id });
 
     const report = await Promise.all(
       courses.map(async (course) => {
