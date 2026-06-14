@@ -21,10 +21,20 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // Check if user exists
+    // Check if user exists by email
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: 'User already exists with this email' });
+    }
+
+    // Check if matriculation number already exists
+    if (role === 'student' && matriculationNumber) {
+      const existingMatric = await User.findOne({ matriculationNumber });
+      if (existingMatric) {
+        return res.status(400).json({ 
+          message: 'A student with this matriculation number already exists' 
+        });
+      }
     }
 
     // Create user
@@ -39,28 +49,28 @@ const registerUser = async (req, res) => {
 
     await user.save();
 
-    // Send welcome email
-    try {
-      await sendEmail({
-        to: user.email,
-        subject: 'Welcome to UTG Attendance System',
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #1a1a2e;">Welcome to UTG Attendance System!</h2>
-            <p>Dear ${user.fullName},</p>
-            <p>Your account has been successfully created.</p>
-            <p><strong>Role:</strong> ${user.role}</p>
-            <p><strong>Email:</strong> ${user.email}</p>
-            <p>You can now login at: <a href="${process.env.CLIENT_URL}">${process.env.CLIENT_URL}</a></p>
-            <br/>
-            <p>Best regards,</p>
-            <p><strong>UTG Attendance System</strong></p>
-          </div>
-        `
-      });
-    } catch (emailError) {
+    // Fire-and-forget email — does not block response
+    sendEmail({
+      to: user.email,
+      subject: 'Welcome to UTG Attendance System',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1a1a2e;">Welcome to UTG Attendance System!</h2>
+          <p>Dear ${user.fullName},</p>
+          <p>Your account has been successfully created.</p>
+          <p><strong>Role:</strong> ${user.role}</p>
+          <p><strong>Email:</strong> ${user.email}</p>
+          <p>You can now login at: <a href="${process.env.CLIENT_URL}">${process.env.CLIENT_URL}</a></p>
+          <br/>
+          <p>Best regards,</p>
+          <p><strong>UTG Attendance System</strong></p>
+        </div>
+      `
+    }).then(() => {
+      console.log('Welcome email sent successfully!');
+    }).catch((emailError) => {
       console.log('Email sending failed:', emailError.message);
-    }
+    });
 
     res.status(201).json({ message: 'User registered successfully' });
 
