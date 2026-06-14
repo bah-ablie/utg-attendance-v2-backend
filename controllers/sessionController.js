@@ -11,7 +11,7 @@ const createSession = async (req, res) => {
 
     // Check if course exists and lecturer is assigned
     const courseExists = await Course.findById(course)
-      .populate('students', 'fullName email');
+      .populate('students.student', 'fullName email');
     if (!courseExists) {
       return res.status(404).json({ message: 'Course not found' });
     }
@@ -52,33 +52,36 @@ const createSession = async (req, res) => {
     session.qrCode = qrCode;
     await session.save();
 
-    // Send email to enrolled students
-    try {
-      const studentEmails = courseExists.students.map(s => s.email);
-      if (studentEmails.length > 0) {
-        await sendEmail({
-          to: studentEmails.join(','),
-          subject: `Class Session Started - ${courseExists.courseName}`,
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #1a1a2e;">Class Session Started!</h2>
-              <p>A new class session has started for:</p>
-              <p><strong>Course:</strong> ${courseExists.courseName} (${courseExists.courseCode})</p>
-              <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-              <p><strong>Start Time:</strong> ${startTime}</p>
-              <p><strong>End Time:</strong> ${endTime}</p>
-              ${venue ? `<p><strong>Venue:</strong> ${venue}</p>` : ''}
-              <p>Please scan the QR code displayed by your lecturer to mark your attendance.</p>
-              <p><strong>Note:</strong> The QR code expires in 5 minutes!</p>
-              <br/>
-              <p>Best regards,</p>
-              <p><strong>UTG Attendance System</strong></p>
-            </div>
-          `
-        });
-      }
-    } catch (emailError) {
-      console.log('Email sending failed:', emailError.message);
+    // Fire-and-forget email — does not block response
+    const studentEmails = courseExists.students
+      .map(s => s.student?.email || s.email)
+      .filter(Boolean);
+
+    if (studentEmails.length > 0) {
+      sendEmail({
+        to: studentEmails.join(','),
+        subject: `Class Session Started - ${courseExists.courseName}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #1a1a2e;">Class Session Started!</h2>
+            <p>A new class session has started for:</p>
+            <p><strong>Course:</strong> ${courseExists.courseName} (${courseExists.courseCode})</p>
+            <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+            <p><strong>Start Time:</strong> ${startTime}</p>
+            <p><strong>End Time:</strong> ${endTime}</p>
+            ${venue ? `<p><strong>Venue:</strong> ${venue}</p>` : ''}
+            <p>Please scan the QR code displayed by your lecturer to mark your attendance.</p>
+            <p><strong>Note:</strong> The QR code expires in 5 minutes!</p>
+            <br/>
+            <p>Best regards,</p>
+            <p><strong>UTG Attendance System</strong></p>
+          </div>
+        `
+      }).then(() => {
+        console.log('Session email sent successfully!');
+      }).catch((emailError) => {
+        console.log('Session email failed:', emailError.message);
+      });
     }
 
     res.status(201).json({
@@ -156,16 +159,13 @@ const regenerateQR = async (req, res) => {
       return res.status(404).json({ message: 'Session not found' });
     }
 
-    // Check if lecturer owns this session
     if (session.lecturer.toString() !== req.user.id.toString()) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    // Generate new token and expiry
     const sessionToken = crypto.randomBytes(32).toString('hex');
     const qrCodeExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-    // Generate new QR code
     const qrData = JSON.stringify({
       sessionToken,
       courseId: session.course,
@@ -224,12 +224,10 @@ const deleteSession = async (req, res) => {
       return res.status(404).json({ message: 'Session not found' });
     }
 
-    // Check if lecturer owns this session
     if (session.lecturer.toString() !== req.user.id.toString()) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    // Only allow deleting closed sessions
     if (session.isActive) {
       return res.status(400).json({ message: 'Cannot delete an active session. Close it first.' });
     }
