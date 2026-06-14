@@ -38,11 +38,9 @@ const getAllCourses = async (req, res) => {
       .populate('students.student', 'fullName email matriculationNumber')
       .sort({ createdAt: -1 });
 
-    // Normalize students array to handle both old and new format
     const normalizedCourses = courses.map(course => {
       const courseObj = course.toObject();
       courseObj.students = courseObj.students.map(enrollment => {
-        // Old format: enrollment is just an ObjectId
         if (!enrollment.student && enrollment._id) {
           return {
             _id: enrollment._id,
@@ -176,29 +174,28 @@ const enrollStudent = async (req, res) => {
     course.students.push({ student: studentId, enrolledBy: 'admin' });
     await course.save();
 
-    try {
-      console.log('Attempting to send email to:', student.email);
-      await sendEmail({
-        to: student.email,
-        subject: `Enrolled in ${course.courseName}`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #1a1a2e;">Course Enrollment Confirmation</h2>
-            <p>Dear ${student.fullName},</p>
-            <p>You have been successfully enrolled in:</p>
-            <p><strong>Course:</strong> ${course.courseName}</p>
-            <p><strong>Code:</strong> ${course.courseCode}</p>
-            <p><strong>Department:</strong> ${course.department}</p>
-            <br/>
-            <p>Best regards,</p>
-            <p><strong>UTG Attendance System</strong></p>
-          </div>
-        `
-      });
+    // Fire-and-forget email — does not block response
+    sendEmail({
+      to: student.email,
+      subject: `Enrolled in ${course.courseName}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1a1a2e;">Course Enrollment Confirmation</h2>
+          <p>Dear ${student.fullName},</p>
+          <p>You have been successfully enrolled in:</p>
+          <p><strong>Course:</strong> ${course.courseName}</p>
+          <p><strong>Code:</strong> ${course.courseCode}</p>
+          <p><strong>Department:</strong> ${course.department}</p>
+          <br/>
+          <p>Best regards,</p>
+          <p><strong>UTG Attendance System</strong></p>
+        </div>
+      `
+    }).then(() => {
       console.log('Email sent successfully!');
-    } catch (emailError) {
+    }).catch((emailError) => {
       console.log('Email sending failed:', emailError.message);
-    }
+    });
 
     res.status(200).json({ message: 'Student enrolled successfully', course });
   } catch (error) {
@@ -233,27 +230,28 @@ const lecturerEnrollStudent = async (req, res) => {
     course.students.push({ student: studentId, enrolledBy: 'lecturer' });
     await course.save();
 
-    try {
-      await sendEmail({
-        to: student.email,
-        subject: `Enrolled in ${course.courseName}`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #1a1a2e;">Course Enrollment Confirmation</h2>
-            <p>Dear ${student.fullName},</p>
-            <p>You have been successfully enrolled in:</p>
-            <p><strong>Course:</strong> ${course.courseName}</p>
-            <p><strong>Code:</strong> ${course.courseCode}</p>
-            <p><strong>Department:</strong> ${course.department}</p>
-            <br/>
-            <p>Best regards,</p>
-            <p><strong>UTG Attendance System</strong></p>
-          </div>
-        `
-      });
-    } catch (emailError) {
+    // Fire-and-forget email — does not block response
+    sendEmail({
+      to: student.email,
+      subject: `Enrolled in ${course.courseName}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1a1a2e;">Course Enrollment Confirmation</h2>
+          <p>Dear ${student.fullName},</p>
+          <p>You have been successfully enrolled in:</p>
+          <p><strong>Course:</strong> ${course.courseName}</p>
+          <p><strong>Code:</strong> ${course.courseCode}</p>
+          <p><strong>Department:</strong> ${course.department}</p>
+          <br/>
+          <p>Best regards,</p>
+          <p><strong>UTG Attendance System</strong></p>
+        </div>
+      `
+    }).then(() => {
+      console.log('Email sent successfully!');
+    }).catch((emailError) => {
       console.log('Email sending failed:', emailError.message);
-    }
+    });
 
     res.status(200).json({ message: 'Student enrolled successfully', course });
   } catch (error) {
